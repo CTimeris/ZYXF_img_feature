@@ -1,0 +1,11 @@
+transformers==4.44.2
+torch==2.1.0+cu118
+torchvision==0.16.0+cu118
+numpy==1.26.4
+pillow
+matplotlib
+mkl
+scikit-learn
+einops
+timm
+accelerate
