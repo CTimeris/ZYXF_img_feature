@@ -11,8 +11,7 @@ model_2_column = {
         'human_beauty': None,
         'clip_vit': ['眼镜', '帽子', '首饰'],
     }
-"""
-    model_name共有以下选项：
-    "skin_type", "skin_wrinkles", "age_detect", "hair_type", "hair_color", "emotions", "gender_classify", "cloth_detect"
-    "human_beauty", "clip_vit"
-"""
+
+
+model_name共有以下选项：
+"skin_type", "skin_wrinkles", "age_detect", "hair_type", "hair_color", "emotions", "gender_classify", "cloth_detect", "human_beauty", "clip_vit"
