@@ -13,5 +13,5 @@ model_2_column = {
     }
 
 
-model_name共有以下选项：
+model_name有：
 "skin_type", "skin_wrinkles", "age_detect", "hair_type", "hair_color", "emotions", "gender_classify", "cloth_detect", "human_beauty", "clip_vit"
