@@ -1,3 +1,4 @@
+# -*- coding: utf-8 -*-
 from models import Models
 import pandas as pd
 from utils import save_results, test_res, get_img_paths
@@ -54,17 +55,20 @@ model_names = ['skin_type', 'skin_wrinkles', 'age_detect', 'hair_type', 'hair_co
 
 # 运行参数
 parser = argparse.ArgumentParser()
-parser.add_argument('--select_models', type=list, default=['skin_type'], help='用列表设置需要跑的模型，默认全跑')
+parser.add_argument('--select_models', type=str, default=None,
+                    help='用逗号分隔需要跑的模型（如--select_models=skin_type,clip_vit），默认全跑')
 parser.add_argument('--img_dir', type=str, default='datasets/test_imgs', help='需要推理的图片路径')
 parser.add_argument('--save_dir', type=str, default='res', help='保存结果的目录')
 parser.add_argument('--label_file', type=str, default='datasets/labels.txt', help='标签数据')
+parser.add_argument('--no_eval', type=bool, default=True, help='是否需要评估')
 
 
 def main():
     args = parser.parse_args()
-    if args.select_models:      # 如果选定了只跑哪几个模型
-        select_model2path = {k: model2path[k] for k in args.select_models}
-        select_model2column = {k: model2column[k] for k in args.select_models}
+    if args.select_models is not None:
+        select_models = args.select_models.split(',')
+        select_model2path = {k: model2path[k] for k in select_models}
+        select_model2column = {k: model2column[k] for k in select_models}
     else:
         select_model2path = model2path
         select_model2column = model2column
@@ -91,17 +95,20 @@ def main():
     if not os.path.exists(save_dir):
         os.mkdir(save_dir)
     df_results = pd.DataFrame(results)
-    df_results.to_csv(os.path.join(save_dir, 'results.csv'), index=False)
+    df_results.to_csv(os.path.join(save_dir, f'{args.select_models}_results.csv'), index=False)
     # save_results(results, save_dir)       # 一行一行写，保存为txt文件
 
     # ---评估结果---
-    label_file = args.label_file
-    df_labels = pd.read_csv(label_file, sep=',', header=0)
-    merge_column = '图片路径'  # 根据图片路径这一列合并
-    columns = select_model2column.values()
-    for column in columns:
-        if column and column is not list:
-            test_res(df_labels, df_results, merge_column, column, save_dir)    # 标签，结果，合并列名，预测列名，保存目录
+    if not args.no_eval:
+        label_file = args.label_file
+        df_labels = pd.read_csv(label_file, sep=',', header=0)
+        merge_column = '图片路径'  # 根据图片路径这一列合并
+        columns = select_model2column.values()
+        for column in columns:
+            if column and column is not list:
+                test_res(df_labels, df_results, merge_column, column, save_dir)    # 标签，结果，合并列名，预测列名，保存目录
+
+    print('done')
 
 
 if __name__ == "__main__":

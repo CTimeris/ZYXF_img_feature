@@ -1,3 +1,4 @@
+# -*- coding: utf-8 -*-
 from transformers import AutoImageProcessor, AutoModelForImageClassification, AutoModel, AutoTokenizer
 from transformers import CLIPProcessor, CLIPModel
 import torch
