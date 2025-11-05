@@ -1,8 +1,7 @@
 # -*- coding: utf-8 -*-
-from models import Models
+from models import Models, Retinaface_infer
 import pandas as pd
 from utils import save_results, test_res, get_img_paths
-from PIL import Image
 import os
 import argparse
 
@@ -17,7 +16,8 @@ model2column = {
         'gender_classify': '性别',
         'cloth_detect': '衣服类型',
         'human_beauty': None,
-        'clip_vit': ['眼镜', '帽子', '首饰']
+        'clip_vit': ['眼镜', '帽子', '首饰'],
+        'Retinaface': ['脸型', '宽高比', '五眼比例', '三庭比例']
     }
 # 模型名：模型路径
 model2path = {
@@ -30,7 +30,8 @@ model2path = {
         'gender_classify': 'model_weights/gender_classify',
         'cloth_detect': 'model_weights/cloth_detect',
         'human_beauty': 'model_weights/human_beauty',
-        'clip_vit': 'model_weights/clip_vit'
+        'clip_vit': 'model_weights/clip_vit',
+        'Retinaface': None
 }
 # clip模型中的提示模板
 clip_prompts = {
@@ -51,7 +52,7 @@ clip_prompts = {
 
 # 所有的模型名
 model_names = ['skin_type', 'skin_wrinkles', 'age_detect', 'hair_type', 'hair_color', 'emotions', 'gender_classify',
-               'cloth_detect', 'human_beauty', 'clip_vit']
+               'cloth_detect', 'human_beauty', 'clip_vit', 'Retinaface']
 
 # 运行参数
 parser = argparse.ArgumentParser()
@@ -62,19 +63,31 @@ parser.add_argument('--save_dir', type=str, default='res', help='保存结果的
 parser.add_argument('--label_file', type=str, default='datasets/labels.txt', help='标签数据')
 parser.add_argument('--no_eval', type=bool, default=True, help='是否需要评估')
 
+parser.add_argument('--save_img', type=bool, default=False, help='是否需要保存Retinaface检测的图片')
+parser.add_argument('--img_output_dir', type=str, default='img_output', help='Retinaface图片输出路径')
+
 
 def main():
     args = parser.parse_args()
     if args.select_models is not None:
         select_models = args.select_models.split(',')
-        select_model2path = {k: model2path[k] for k in select_models}
-        select_model2column = {k: model2column[k] for k in select_models}
+        args.select_model2path = {k: model2path[k] for k in select_models}
+        args.select_model2column = {k: model2column[k] for k in select_models}
     else:
-        select_model2path = model2path
-        select_model2column = model2column
+        args.select_model2path = model2path
+        args.select_model2column = model2column
+
+    # 检查保存目录
+    if not os.path.exists(args.save_dir):
+        os.mkdir(args.save_dir)
+    img_output_dir = os.path.join(args.save_dir, args.img_output_dir)
+    if args.save_img:
+        if not os.path.exists(img_output_dir):      # 检测图片的输出目录
+            os.mkdir(img_output_dir)
 
     # ---加载模型---
-    all_models = Models(model2path=select_model2path, model2column=select_model2column, clip_prompts=clip_prompts)
+    args.clip_prompts = clip_prompts
+    all_models = Models(args)
     all_models.load_models()
 
     # ---获取图片路径---
@@ -85,15 +98,13 @@ def main():
     results = []
     for img_path in img_paths:
         result = {'图片路径': img_path}
-        img = Image.open(img_path).convert("RGB")
-        outputs = all_models.infer_one_img(img)     # 汇集所有输出的字典
+        img_filename = os.path.basename(img_path)
+        img_output_path = os.path.join(img_output_dir, img_filename)
+        outputs = all_models.infer_one_img(img_path, img_output_path)     # 汇集所有输出的字典
         result.update(outputs)      # result就是单张图片的所有信息
         results.append(result)
 
     # ---保存结果---
-    save_dir = args.save_dir                # 保存结果的目录
-    if not os.path.exists(save_dir):
-        os.mkdir(save_dir)
     df_results = pd.DataFrame(results)
     df_results.to_csv(os.path.join(save_dir, f'{args.select_models}_results.csv'), index=False)
     # save_results(results, save_dir)       # 一行一行写，保存为txt文件

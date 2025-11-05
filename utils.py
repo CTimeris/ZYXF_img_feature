@@ -1,5 +1,7 @@
 # -*- coding: utf-8 -*-
 import os
+
+import numpy as np
 import pandas as pd
 import torch
 import torchvision.transforms as T
@@ -114,3 +116,56 @@ def test_res(df_labels, df_results, merge_column, column, save_dir):
     df_merge.to_csv(os.path.join(save_dir, f"{column}_case.csv"), index=False)
     report_str = classification_report(df_merge[column], df_merge[f"{column}_pre"], zero_division=0)
     print(report_str)
+
+
+def calculate_face_metrics(landmarks):
+    """
+    根据人脸关键点计算脸型和比例
+    :param landmarks: 单个人脸的5个关键点坐标，格式为[x1,y1,x2,y2,x3,y3,x4,y4,x5,y5]
+                      对应：左眼、右眼、鼻尖、左嘴角、右嘴角
+    :return: 包含脸型和比例的字典
+    """
+    # 提取关键点
+    left_eye = np.array([landmarks[0], landmarks[1]])    # 左眼
+    right_eye = np.array([landmarks[2], landmarks[3]])   # 右眼
+    nose = np.array([landmarks[4], landmarks[5]])        # 鼻尖
+    left_mouth = np.array([landmarks[6], landmarks[7]])  # 左嘴角
+    right_mouth = np.array([landmarks[8], landmarks[9]]) # 右嘴角
+
+    # 1. 计算面部宽高比（用于判断脸型）
+    # 面部宽度：两颧骨间距（近似为两眼外侧距离）
+    face_width = np.linalg.norm(right_eye - left_eye) * 1.6  # 经验系数
+    # 面部高度：发际线到下巴（近似为鼻尖到下巴与两眼中线距离）
+    eye_mid = (left_eye + right_eye) / 2  # 两眼中点
+    mouth_mid = (left_mouth + right_mouth) / 2  # 嘴角中点
+    face_height = np.linalg.norm(mouth_mid - eye_mid) * 2.8  # 经验系数
+    width_height_ratio = face_width / face_height
+
+    # 2. 判断脸型
+    if 0.7 <= width_height_ratio < 0.8:
+        face_shape = "椭圆形"
+    elif 0.8 <= width_height_ratio < 0.9:
+        face_shape = "圆形"
+    elif 0.9 <= width_height_ratio < 1.0:
+        face_shape = "方形"
+    else:
+        face_shape = "长形"
+
+    # 3. 五眼比例（面部宽度应约等于5个眼睛宽度）
+    eye_distance = np.linalg.norm(right_eye - left_eye)  # 两眼间距
+    eye_width = (left_eye[0] - (left_eye[0] - right_eye[0])/3)  # 单眼宽度近似
+    five_eye_ratio = face_width / (5 * eye_width)  # 理想值≈1.0
+
+    # 4. 三庭比例（上庭：两眼到发际线；中庭：两眼到鼻尖；下庭：鼻尖到下巴）
+    # 简化计算：中庭长度（两眼到鼻尖）
+    mid_court = np.linalg.norm(nose - eye_mid)
+    # 下庭长度（鼻尖到嘴角中点延长）
+    down_court = np.linalg.norm(mouth_mid - nose) * 1.5
+    three_court_ratio = mid_court / down_court      # 理想值≈1.0
+
+    return {
+        "face_shape": face_shape,
+        "width_height_ratio": round(width_height_ratio, 2),
+        "five_eye_ratio": round(five_eye_ratio, 2),
+        "three_court_ratio": round(three_court_ratio, 2)
+    }
