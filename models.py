@@ -44,13 +44,12 @@ def clip_infer(image, text, processor, model):
 
 
 class Models:
-    def __init__(self, args):
-        self.args = args
-        self.model2path = args.select_model2path        # 模型名：路径
-        self.model2column = args.select_model2column    # 模型名：列名
+    def __init__(self, select_model2path={}, select_model2column={}, clip_prompts={}):
+        self.model2path = select_model2path        # 模型名：路径
+        self.model2column = select_model2column    # 模型名：列名
         self.processor_dict = {}
         self.model_dict = {}
-        self.clip_prompts = args.clip_prompts    # clip模型的提示模板
+        self.clip_prompts = clip_prompts    # clip模型的提示模板
 
     def load_models(self):
         """加载所有模型"""
@@ -81,11 +80,8 @@ class Models:
                 self.model_dict[model_name] = AutoModelForImageClassification.from_pretrained(model_path)
         print("所有模型加载完毕")
 
-    def infer_one_img(self, img_path, img_output_path):
+    def infer_one_img(self, img_path, img_output_path, save_img=False):
         """推理一张图片"""
-        if not self.model_dict or not self.processor_dict:
-            print("先使用.load_model()加载模型")
-
         img = Image.open(img_path).convert("RGB")
 
         results = {}
@@ -107,9 +103,7 @@ class Models:
                     results[column] = index     # 结果保留为prompts中对应的类别下标
             elif model_name == "Retinaface":
                 # Retinaface
-                [net, cfg, Retinaface_device, Retinaface_args] = self.model_dict[model_name]
-                save_img = self.args.save_img
-                result = Retinaface_infer(img_path, img_output_path, net, cfg, Retinaface_device, Retinaface_args, save_img)
+                result = Retinaface_infer(img_path, img_output_path, model, save_img)
                 results.update(result)
             else:
                 # 其他
@@ -150,7 +144,8 @@ def load_Retinaface():
     return net, cfg, device, args
 
 
-def Retinaface_infer(img_path, output_path, net, cfg, device, args, save_img=False):
+def Retinaface_infer(img_path, output_path, model, save_img=False):
+    [net, cfg, device, args] = model
     img_raw = cv2.imread(img_path, cv2.IMREAD_COLOR)
     dets = detect_face(net, cfg, device, img_raw, args)
     # 计算脸型和比例并处理结果

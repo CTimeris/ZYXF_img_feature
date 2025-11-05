@@ -1,5 +1,5 @@
 # -*- coding: utf-8 -*-
-from models import Models, Retinaface_infer
+from models import Models
 import pandas as pd
 from utils import save_results, test_res, get_img_paths
 import os
@@ -71,11 +71,11 @@ def main():
     args = parser.parse_args()
     if args.select_models is not None:
         select_models = args.select_models.split(',')
-        args.select_model2path = {k: model2path[k] for k in select_models}
-        args.select_model2column = {k: model2column[k] for k in select_models}
+        select_model2path = {k: model2path[k] for k in select_models}
+        select_model2column = {k: model2column[k] for k in select_models}
     else:
-        args.select_model2path = model2path
-        args.select_model2column = model2column
+        select_model2path = model2path
+        select_model2column = model2column
 
     # 检查保存目录
     if not os.path.exists(args.save_dir):
@@ -86,8 +86,7 @@ def main():
             os.mkdir(img_output_dir)
 
     # ---加载模型---
-    args.clip_prompts = clip_prompts
-    all_models = Models(args)
+    all_models = Models(select_model2path, select_model2column, clip_prompts)
     all_models.load_models()
 
     # ---获取图片路径---
@@ -100,13 +99,13 @@ def main():
         result = {'图片路径': img_path}
         img_filename = os.path.basename(img_path)
         img_output_path = os.path.join(img_output_dir, img_filename)
-        outputs = all_models.infer_one_img(img_path, img_output_path)     # 汇集所有输出的字典
+        outputs = all_models.infer_one_img(img_path, img_output_path, save_img=args.save_img)     # 汇集所有输出的字典
         result.update(outputs)      # result就是单张图片的所有信息
         results.append(result)
 
     # ---保存结果---
     df_results = pd.DataFrame(results)
-    df_results.to_csv(os.path.join(save_dir, f'{args.select_models}_results.csv'), index=False)
+    df_results.to_csv(os.path.join(args.save_dir, f'{args.select_models}_results.csv'), index=False)
     # save_results(results, save_dir)       # 一行一行写，保存为txt文件
 
     # ---评估结果---
@@ -117,7 +116,7 @@ def main():
         columns = select_model2column.values()
         for column in columns:
             if column and column is not list:
-                test_res(df_labels, df_results, merge_column, column, save_dir)    # 标签，结果，合并列名，预测列名，保存目录
+                test_res(df_labels, df_results, merge_column, column, args.save_dir)    # 标签，结果，合并列名，预测列名，保存目录
 
     print('done')
 
