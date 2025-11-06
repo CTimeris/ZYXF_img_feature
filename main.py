@@ -129,7 +129,8 @@ def main():
 
     # ---保存结果---
     df_results = pd.DataFrame(results)
-    df_results.to_csv(os.path.join(args.save_dir, f'results.csv'), index=False)
+    img_dir_name = os.path.basename(img_dir)
+    df_results.to_csv(os.path.join(args.save_dir, f'{img_dir_name}_results.csv'), index=False)
     # save_results(results, save_dir)       # 一行一行写，保存为txt文件
 
     # ---评估结果---
