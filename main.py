@@ -56,14 +56,14 @@ model_names = ['skin_type', 'skin_wrinkles', 'age_detect', 'hair_type', 'hair_co
 
 # 运行参数
 parser = argparse.ArgumentParser()
-parser.add_argument('--select_models', type=str, default=None,
+parser.add_argument('--select_models', type=str, default='Retinaface',
                     help='用逗号分隔需要跑的模型（如--select_models=skin_type,clip_vit），默认全跑')
 parser.add_argument('--img_dir', type=str, default='datasets/test_imgs', help='需要推理的图片路径')
 parser.add_argument('--save_dir', type=str, default='res', help='保存结果的目录')
 parser.add_argument('--label_file', type=str, default='datasets/labels.txt', help='标签数据')
 parser.add_argument('--no_eval', type=bool, default=True, help='是否需要评估')
 
-parser.add_argument('--save_img', type=bool, default=False, help='是否需要保存Retinaface检测的图片')
+parser.add_argument('--save_img', type=bool, default=True, help='是否需要保存Retinaface检测的图片')
 parser.add_argument('--img_output_dir', type=str, default='img_output', help='Retinaface图片输出路径')
 
 
@@ -95,7 +95,7 @@ def main():
 
     # ---读取并推理图片---
     results = []
-    for img_path in img_paths:
+    for img_path in img_paths[:2]:
         result = {'图片路径': img_path}
         img_filename = os.path.basename(img_path)
         img_output_path = os.path.join(img_output_dir, img_filename)

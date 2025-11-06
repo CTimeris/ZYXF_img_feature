@@ -1,11 +1,11 @@
 # -*- coding: utf-8 -*-
-import cv2
+import numpy as np
 from transformers import AutoImageProcessor, AutoModelForImageClassification, AutoModel, AutoTokenizer
 from transformers import CLIPProcessor, CLIPModel
 import torch
 from Pytorch_Retinaface.detect import init_detector, detect_face
 from utils import process_img_beauty, calculate_face_metrics
-from PIL import Image
+from PIL import Image, ImageDraw, ImageFont
 
 
 def human_beauty_infer(pixel_values, tokenizer, model):
@@ -103,7 +103,7 @@ class Models:
                     results[column] = index     # 结果保留为prompts中对应的类别下标
             elif model_name == "Retinaface":
                 # Retinaface
-                result = Retinaface_infer(img_path, img_output_path, model, save_img)
+                result = Retinaface_infer(img, img_output_path, model, save_img)
                 results.update(result)
             else:
                 # 其他
@@ -144,10 +144,10 @@ def load_Retinaface():
     return net, cfg, device, args
 
 
-def Retinaface_infer(img_path, output_path, model, save_img=False):
+def Retinaface_infer(img, output_path, model, save_img=False):
     [net, cfg, device, args] = model
-    img_raw = cv2.imread(img_path, cv2.IMREAD_COLOR)
-    dets = detect_face(net, cfg, device, img_raw, args)
+    img_np = np.array(img)[:, :, ::-1].astype(np.float32)  # RGB→BGR
+    dets = detect_face(net, cfg, device, img_np, args)
     # 计算脸型和比例并处理结果
     results = []
     for i, det in enumerate(dets):
@@ -167,19 +167,22 @@ def Retinaface_infer(img_path, output_path, model, save_img=False):
 
         if save_img:
             # 可视化标注
+            draw = ImageDraw.Draw(img)
             x1, y1, x2, y2 = map(int, det[:4])
-            cv2.rectangle(img_raw, (x1, y1), (x2, y2), (0, 0, 255), 2)
+            draw.rectangle([(x1, y1), (x2, y2)], outline=(255, 0, 0), width=2)  # 红色（RGB）
             # 画关键点
             for j in range(5):
                 x, y = int(landmarks[2 * j]), int(landmarks[2 * j + 1])
-                cv2.circle(img_raw, (x, y), 3, (0, 255, 0), -1)
-            # 标注脸型
-            cv2.putText(img_raw, f"{metrics['face_shape']}", (x1, y1 - 10),
-                        cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 255, 0), 2)
-
+                draw.ellipse([(x-3, y-3), (x+3, y+3)], fill=(0, 255, 0))  # 绿色（RGB）
+                # 绘制文字
+                try:
+                    font = ImageFont.truetype("arial.ttf", 12)  # 加载字体
+                except:
+                    font = ImageFont.load_default()
+                draw.text((x1, y1 - 10), f"{metrics['face_shape']}", font=font, fill=(0, 255, 0))  # 绿色文字
         # 保存结果和输出信息
     if save_img:
-        cv2.imwrite(output_path, img_raw)
+        img.save(output_path)
     # print(f"脸型结果图像已保存至：{output_path}")
 
     res = results[0]        # 保留第一个人脸，要多个需要修改这里的代码

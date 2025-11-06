@@ -9,4 +9,3 @@ scikit-learn
 einops
 timm
 accelerate
-opencv-python==4.12.0.88
