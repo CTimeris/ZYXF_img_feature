@@ -3,8 +3,6 @@ import torch.nn as nn
 import torchvision.models.detection.backbone_utils as backbone_utils
 import torchvision.models._utils as _utils
 import torch.nn.functional as F
-from collections import OrderedDict
-
 from ..models.net import MobileNetV1 as MobileNetV1
 from ..models.net import FPN as FPN
 from ..models.net import SSH as SSH
@@ -66,7 +64,15 @@ class RetinaFace(nn.Module):
                 backbone.load_state_dict(new_state_dict)
         elif cfg['name'] == 'Resnet50':
             import torchvision.models as models
-            backbone = models.resnet50(pretrained=cfg['pretrain'])
+            # backbone = models.resnet50(pretrained=cfg['pretrain'])
+            from pathlib import Path
+            backbone = models.resnet50(pretrained=False)
+            # 从当前文件（retinaface.py）出发，向上一级到 models/，再向上一级到 Pytorch_Ret/，然后进入 weights/
+            current_file_path = Path(__file__).resolve()  # 获取 retinaface.py 的绝对路径
+            weights_path = current_file_path.parent.parent / "weights" / "Resnet50_Final.pth"
+
+            checkpoint = torch.load(weights_path, map_location=torch.device('cpu'))
+            backbone.load_state_dict(checkpoint)
 
         self.body = _utils.IntermediateLayerGetter(backbone, cfg['return_layers'])
         in_channels_stage2 = cfg['in_channel']
