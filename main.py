@@ -95,7 +95,7 @@ def main():
 
     # ---读取并推理图片---
     results = []
-    for img_path in img_paths[:2]:
+    for img_path in img_paths:
         result = {'图片路径': img_path}
         img_filename = os.path.basename(img_path)
         img_output_path = os.path.join(img_output_dir, img_filename)

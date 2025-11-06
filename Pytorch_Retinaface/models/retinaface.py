@@ -65,12 +65,12 @@ class RetinaFace(nn.Module):
         elif cfg['name'] == 'Resnet50':
             import torchvision.models as models
             # backbone = models.resnet50(pretrained=cfg['pretrain'])
+
             from pathlib import Path
             backbone = models.resnet50(pretrained=False)
             # 从当前文件（retinaface.py）出发，向上一级到 models/，再向上一级到 Pytorch_Ret/，然后进入 weights/
             current_file_path = Path(__file__).resolve()  # 获取 retinaface.py 的绝对路径
-            weights_path = current_file_path.parent.parent / "weights" / "Resnet50_Final.pth"
-
+            weights_path = current_file_path.parent.parent / "weights" / "resnet50-0676ba61.pth"
             checkpoint = torch.load(weights_path, map_location=torch.device('cpu'))
             backbone.load_state_dict(checkpoint)
 
