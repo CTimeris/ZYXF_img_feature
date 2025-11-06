@@ -121,8 +121,6 @@ def main():
 
         net, cfg, Retinaface_device, Retinaface_args = load_Retinaface()  # 加载Retinaface模型
         for i in range(len(img_paths)):
-            if i == 2:
-                break
             img_path = img_paths[i]
             img_filename = os.path.basename(img_path)
             img_output_path = os.path.join(img_output_dir, img_filename)
