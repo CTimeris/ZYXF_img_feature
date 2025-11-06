@@ -69,18 +69,13 @@ class Models:
                 # clip模型
                 self.processor_dict[model_name] = CLIPProcessor.from_pretrained(model_path)
                 self.model_dict[model_name] = CLIPModel.from_pretrained(model_path)
-            elif model_name == "Retinaface":
-                net, cfg, Retinaface_device, Retinaface_args = load_Retinaface()  # 加载Retinaface模型
-                Retinaface_model = [net, cfg, Retinaface_device, Retinaface_args]   # 把模型所有配置放到一个字典
-                self.processor_dict[model_name] = None
-                self.model_dict[model_name] = Retinaface_model
             else:
                 # 其他模型
                 self.processor_dict[model_name] = AutoImageProcessor.from_pretrained(model_path)
                 self.model_dict[model_name] = AutoModelForImageClassification.from_pretrained(model_path)
         print("所有模型加载完毕")
 
-    def infer_one_img(self, img_path, img_output_path, save_img=False):
+    def infer_one_img(self, img_path):
         """推理一张图片"""
         img = Image.open(img_path).convert("RGB")
 
@@ -101,10 +96,6 @@ class Models:
                     probs_flat = probs.squeeze()
                     index = torch.argmax(probs_flat).item()
                     results[column] = index     # 结果保留为prompts中对应的类别下标
-            elif model_name == "Retinaface":
-                # Retinaface
-                result = Retinaface_infer(img, img_output_path, model, save_img)
-                results.update(result)
             else:
                 # 其他
                 input_data = processor(images=img, return_tensors="pt")
@@ -144,8 +135,8 @@ def load_Retinaface():
     return net, cfg, device, args
 
 
-def Retinaface_infer(img, output_path, model, save_img=False):
-    [net, cfg, device, args] = model
+def Retinaface_infer(img_path, output_path, net, cfg, device, args, save_img):
+    img = Image.open(img_path).convert("RGB")
     img_np = np.array(img)[:, :, ::-1].astype(np.float32)  # RGB→BGR
     dets = detect_face(net, cfg, device, img_np, args)
     # 计算脸型和比例并处理结果
