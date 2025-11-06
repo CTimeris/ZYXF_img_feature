@@ -119,10 +119,10 @@ def load_Retinaface():
         "cpu": False,  # 是否用CPU（False表示用GPU，True表示用CPU）
         # 检测阈值参数
         "confidence_threshold": 0.02,
-        "top_k": 5000,
+        "top_k": 1000,
         "nms_threshold": 0.4,
-        "keep_top_k": 750,
-        "vis_thres": 0.6,  # 可视化/保留结果的置信度阈值
+        "keep_top_k": 100,
+        "vis_thres": 0.5,  # 可视化/保留结果的置信度阈值
     }
 
     # 为了兼容原detect.py的参数格式，将字典转为类对象
@@ -137,6 +137,18 @@ def load_Retinaface():
 
 def Retinaface_infer(img_path, output_path, net, cfg, device, args, save_img):
     img = Image.open(img_path).convert("RGB")
+
+    # 限制图像尺寸（长边不超过800像素）
+    max_size = 800  # 可根据显存情况调整
+    width, height = img.size
+    # 计算缩放比例（保持宽高比）
+    if max(width, height) > max_size:
+        scale = max_size / max(width, height)
+        new_width = int(width * scale)
+        new_height = int(height * scale)
+        # 使用PIL的resize方法缩放（抗锯齿模式）
+        img = img.resize((new_width, new_height), Image.Resampling.LANCZOS)
+
     img_np = np.array(img)[:, :, ::-1].astype(np.float32)  # RGB→BGR
     dets = detect_face(net, cfg, device, img_np, args)
     # 计算脸型和比例并处理结果

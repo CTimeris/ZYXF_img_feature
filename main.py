@@ -69,7 +69,7 @@ parser.add_argument('--label_file', type=str, default='datasets/labels.txt', hel
 parser.add_argument('--no_eval', type=bool, default=True, help='是否需要评估')
 
 parser.add_argument('--use_Retinaface', type=bool, default=True, help='是否使用Retinaface模型')
-parser.add_argument('--save_img', type=bool, default=False, help='是否需要保存Retinaface检测的图片')
+parser.add_argument('--save_img', type=bool, default=True, help='是否需要保存Retinaface检测的图片')
 parser.add_argument('--img_output_dir', type=str, default='img_output', help='Retinaface图片输出路径')
 
 
@@ -115,9 +115,9 @@ def main():
     if args.use_Retinaface:
         if args.select_models != 'none':
             del all_models
+            torch.cuda.empty_cache()
+            torch.cuda.reset_max_memory_allocated()  # 重置显存统计
             gc.collect()
-            if torch.cuda.is_available():
-                torch.cuda.empty_cache()
 
         net, cfg, Retinaface_device, Retinaface_args = load_Retinaface()  # 加载Retinaface模型
         for i in range(len(img_paths)):

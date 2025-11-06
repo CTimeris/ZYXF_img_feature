@@ -73,7 +73,8 @@ def detect_face(net, cfg, device, img_raw, args):
     img = torch.from_numpy(img).unsqueeze(0).to(device)
 
     # 模型推理
-    loc, conf, landms = net(img)
+    with torch.cuda.amp.autocast():
+        loc, conf, landms = net(img)
 
     # 解码框和关键点
     priorbox = PriorBox(cfg, image_size=(im_height, im_width))
