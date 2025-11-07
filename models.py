@@ -105,7 +105,7 @@ class Models:
                         outputs = model(**inputs)
                     logits_per_image = outputs.logits_per_image  # 图文相似度
                     probs = logits_per_image.softmax(dim=1)  # 标签概率
-                    index = torch.argmax(probs, dim=1).item()
+                    index = torch.argmax(probs, dim=1)
                     for i in range(batch_size):
                         batch_results[i][column] = index[i].item()  # 结果保留为prompts中对应的类别下标
             else:
