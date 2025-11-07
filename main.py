@@ -1,5 +1,6 @@
 # -*- coding: utf-8 -*-
 import gc
+from datetime import datetime
 
 import torch.cuda
 
@@ -75,6 +76,18 @@ parser.add_argument('--img_output_dir', type=str, default='img_output', help='Re
 
 def main():
     args = parser.parse_args()
+    # ---解析参数---
+    if args.select_models != 'none':
+        if args.select_models == 'all':
+            select_model2path = model2path
+            select_model2column = model2column
+        else:
+            select_models = args.select_models.split(',')
+            select_model2path = {k: model2path[k] for k in select_models}
+            select_model2column = {k: model2column[k] for k in select_models}
+    else:
+        select_model2path = {}
+        select_model2column = {}
     # 检查保存目录
     if not os.path.exists(args.save_dir):
         os.mkdir(args.save_dir)
@@ -92,40 +105,27 @@ def main():
         result = {'图片路径': img_path}
         results.append(result)
 
-    # ---加载模型并推理---
-    if args.select_models != 'none':
-        if args.select_models == 'all':
-            select_model2path = model2path
-            select_model2column = model2column
-        else:
-            select_models = args.select_models.split(',')
-            select_model2path = {k: model2path[k] for k in select_models}
-            select_model2column = {k: model2column[k] for k in select_models}
+    # ---加载模型---
+    all_models = Models(select_model2path, select_model2column, clip_prompts)
+    all_models.load_models()
 
-        # 加载模型
-        all_models = Models(select_model2path, select_model2column, clip_prompts)
-        all_models.load_models()
-        # 推理
-        for i in range(len(img_paths)):
-            img_path = img_paths[i]
-            outputs = all_models.infer_one_img(img_path)  # 汇集所有输出的字典
-            results[i].update(outputs)
-
-    # "Retinaface"会导致显存oom，需要单独处理，先把之前的models全清掉
     if args.use_Retinaface:
-        if args.select_models != 'none':
-            del all_models
-            torch.cuda.empty_cache()
-            torch.cuda.reset_max_memory_allocated()  # 重置显存统计
-            gc.collect()
-
         net, cfg, Retinaface_device, Retinaface_args = load_Retinaface()  # 加载Retinaface模型
-        for i in range(len(img_paths)):
-            img_path = img_paths[i]
+    time1 = datetime.now()
+    print(f"所有模型加载完毕，当前时间: {time1}")
+    # 推理
+    for i in range(len(img_paths)):
+        img_path = img_paths[i]
+        outputs = all_models.infer_one_img(img_path)  # 汇集所有输出的字典
+        results[i].update(outputs)
+        if args.use_Retinaface:
             img_filename = os.path.basename(img_path)
             img_output_path = os.path.join(img_output_dir, img_filename)
             result = Retinaface_infer(img_path, img_output_path, net, cfg, Retinaface_device, Retinaface_args, args.save_img)
             results[i].update(result)
+    time2 = datetime.now()
+    print(f"{img_dir}目录下{len(img_paths)}张图片推理完毕，当前时间: {time2}")
+    print(f"平均推理时间: {(time2 - time1) / len(img_paths)}")
 
     # ---保存结果---
     df_results = pd.DataFrame(results)

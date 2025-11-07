@@ -73,7 +73,6 @@ class Models:
                 # 其他模型
                 self.processor_dict[model_name] = AutoImageProcessor.from_pretrained(model_path)
                 self.model_dict[model_name] = AutoModelForImageClassification.from_pretrained(model_path)
-        print("所有模型加载完毕")
 
     def infer_one_img(self, img_path):
         """推理一张图片"""
@@ -114,15 +113,17 @@ class Models:
 def load_Retinaface():
     params = {
         # 模型相关（固定使用resnet50）
-        "trained_model": "./Pytorch_Retinaface/weights/Resnet50_Final.pth",  # 模型路径
-        "network": "resnet50",  # 固定为resnet50
+        # "trained_model": "./Pytorch_Retinaface/weights/Resnet50_Final.pth",  # 模型路径
+        # "network": "resnet50",  # 固定为resnet50
+        "trained_model": "./Pytorch_Retinaface/weights/mobilenet0.25_Final.pth",
+        "network": "mobile0.25",
         "cpu": False,  # 是否用CPU（False表示用GPU，True表示用CPU）
         # 检测阈值参数
         "confidence_threshold": 0.02,
         "top_k": 1000,
         "nms_threshold": 0.4,
         "keep_top_k": 100,
-        "vis_thres": 0.5,  # 可视化/保留结果的置信度阈值
+        "vis_thres": 0.1,  # 可视化/保留结果的置信度阈值，设小点，后面找最高的处理
     }
 
     # 为了兼容原detect.py的参数格式，将字典转为类对象
@@ -139,70 +140,42 @@ def Retinaface_infer(img_path, output_path, net, cfg, device, args, save_img):
     img = Image.open(img_path).convert("RGB")
 
     # 限制图像尺寸（长边不超过800像素）
-    max_size = 800  # 可根据显存情况调整
+    max_size = 256  # 可根据显存情况调整
     width, height = img.size
     # 计算缩放比例（保持宽高比）
     if max(width, height) > max_size:
         scale = max_size / max(width, height)
         new_width = int(width * scale)
         new_height = int(height * scale)
-        # 使用PIL的resize方法缩放（抗锯齿模式）
         img = img.resize((new_width, new_height), Image.Resampling.LANCZOS)
 
     img_np = np.array(img)[:, :, ::-1].astype(np.float32)  # RGB→BGR
     dets = detect_face(net, cfg, device, img_np, args)
-    # 计算脸型和比例并处理结果
-    results = []
-    for i, det in enumerate(dets):
-        confidence = det[4]
-        if confidence < args.vis_thres:
-            continue  # 过滤低置信度结果
-
-        # 提取关键点（det[5:15]为5个关键点的坐标）
-        landmarks = det[5:15]
+    output = {}
+    if dets is not None and len(dets) > 0:
+        # 找到置信度最高的检测结果，按置信度降序排序，取第一个
+        max_conf_det = max(dets, key=lambda x: x[4])
+        landmarks = max_conf_det[5:15]             # 提取关键点（det[5:15]为5个关键点的坐标）
         # 计算脸型和比例
-        metrics = calculate_face_metrics(landmarks)
-        results.append({
-            "face_id": i + 1,
-            "confidence": round(confidence, 4),
-            **metrics
-        })
+        res = calculate_face_metrics(landmarks)
+        output = {
+            '脸型': res['face_shape'],
+            '宽高比': res['width_height_ratio'],
+            '五眼比例': res['five_eye_ratio'],
+            '三庭比例': res['three_court_ratio']
+        }
 
         if save_img:
             # 可视化标注
             draw = ImageDraw.Draw(img)
-            x1, y1, x2, y2 = map(int, det[:4])
+            x1, y1, x2, y2 = map(int, max_conf_det[:4])
             draw.rectangle([(x1, y1), (x2, y2)], outline=(255, 0, 0), width=2)  # 红色（RGB）
             # 画关键点
             for j in range(5):
                 x, y = int(landmarks[2 * j]), int(landmarks[2 * j + 1])
                 draw.ellipse([(x-3, y-3), (x+3, y+3)], fill=(0, 255, 0))  # 绿色（RGB）
-                # 绘制文字
-                try:
-                    font = ImageFont.truetype("arial.ttf", 12)  # 加载字体
-                except:
-                    font = ImageFont.load_default()
-                draw.text((x1, y1 - 10), f"{metrics['face_shape']}", font=font, fill=(0, 255, 0))  # 绿色文字
-        # 保存结果和输出信息
-    if save_img:
-        img.save(output_path)
-    # print(f"脸型结果图像已保存至：{output_path}")
-
-    res = results[0]        # 保留第一个人脸，要多个需要修改这里的代码
-    output = {
-        '脸型': res['face_shape'],
-        '宽高比': res['width_height_ratio'],
-        '五眼比例': res['five_eye_ratio'],
-        '三庭比例': res['three_court_ratio']
-    }
-
-    # print("\n人脸分析结果：")
-    # for res in results:
-    #     print(f"人脸 {res['face_id']}（置信度：{res['confidence']}）:")
-    #     print(f"  脸型：{res['face_shape']}")
-    #     print(f"  宽高比：{res['width_height_ratio']}")
-    #     print(f"  五眼比例：{res['five_eye_ratio']}")
-    #     print(f"  三庭比例（中庭/下庭）：{res['three_court_ratio']}\n")
+            img.save(output_path)
+            # print(f"脸型结果图像已保存至：{output_path}")
 
     return output
 

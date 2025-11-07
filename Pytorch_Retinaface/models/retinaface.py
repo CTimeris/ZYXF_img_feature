@@ -6,6 +6,7 @@ import torch.nn.functional as F
 from ..models.net import MobileNetV1 as MobileNetV1
 from ..models.net import FPN as FPN
 from ..models.net import SSH as SSH
+from pathlib import Path
 
 
 class ClassHead(nn.Module):
@@ -54,7 +55,10 @@ class RetinaFace(nn.Module):
         if cfg['name'] == 'mobilenet0.25':
             backbone = MobileNetV1()
             if cfg['pretrain']:
-                checkpoint = torch.load("./weights/mobilenetV1X0.25_pretrain.tar", map_location=torch.device('cpu'))
+                # 从当前文件（retinaface.py）出发，向上一级到 models/，再向上一级到 Pytorch_Ret/，然后进入 weights/
+                current_file_path = Path(__file__).resolve()  # 获取 retinaface.py 的绝对路径
+                weights_path = current_file_path.parent.parent / "weights" / "mobilenetV1X0.25_pretrain.tar"
+                checkpoint = torch.load(weights_path, map_location=torch.device('cpu'))
                 from collections import OrderedDict
                 new_state_dict = OrderedDict()
                 for k, v in checkpoint['state_dict'].items():
@@ -65,8 +69,6 @@ class RetinaFace(nn.Module):
         elif cfg['name'] == 'Resnet50':
             import torchvision.models as models
             # backbone = models.resnet50(pretrained=cfg['pretrain'])
-
-            from pathlib import Path
             backbone = models.resnet50(pretrained=False)
             # 从当前文件（retinaface.py）出发，向上一级到 models/，再向上一级到 Pytorch_Ret/，然后进入 weights/
             current_file_path = Path(__file__).resolve()  # 获取 retinaface.py 的绝对路径
