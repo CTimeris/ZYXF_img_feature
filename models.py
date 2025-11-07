@@ -100,6 +100,7 @@ class Models:
                 # clip大模型
                 for column, prompt in self.clip_prompts.items():
                     inputs = processor(text=prompt, images=batch_imgs, return_tensors="pt", padding=True)
+                    inputs.to(device=self.device)
                     with torch.no_grad():
                         outputs = model(**inputs)
                     logits_per_image = outputs.logits_per_image  # 图文相似度
