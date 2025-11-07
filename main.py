@@ -68,9 +68,9 @@ parser.add_argument('--img_dir', type=str, default='datasets/test_imgs', help='�
 parser.add_argument('--save_dir', type=str, default='res', help='保存结果的目录')
 parser.add_argument('--label_file', type=str, default='datasets/labels.txt', help='标签数据')
 parser.add_argument('--do_eval', action='store_true', help='是否需要评估')
-parser.add_argument('--output_level', type=int, default=2,
+parser.add_argument('--output_level', type=int, default=1,
                     help='美学大模型输出内容等级，从1到4，1最快，只做整体评分，4最慢输出全部评分')
-parser.add_argument('--use_half', action='store_true', help='半精度推理')
+parser.add_argument('--no_half', action='store_true', help='取消半精度推理')
 
 parser.add_argument('--no_Retinaface', action='store_true')
 parser.add_argument('--save_img', action='store_true', help='是否保存Retinaface检测的图片')
@@ -112,11 +112,15 @@ def main():
     print(f"{img_dir}目录下共{len(img_paths)}张图片，使用{batch_size}的batch大小推理")
 
     # ---加载模型---
-    all_models = Models(select_model2path, select_model2column, clip_prompts, args.output_level)
+    all_models = Models(select_model2path, select_model2column, clip_prompts, args.output_level, args.no_half)
     all_models.load_models()
     if not args.no_Retinaface:
         net, cfg, Retinaface_device, Retinaface_args = load_Retinaface()  # 加载Retinaface模型
     time1 = datetime.now()
+
+    torch.cuda.empty_cache()
+    gc.collect()
+
     print(f"所有模型加载完毕，当前时间: {time1}")
     # 推理
     for i in range(0, len(img_paths), batch_size):

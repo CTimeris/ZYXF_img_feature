@@ -10,7 +10,7 @@ from utils import process_img_beauty, calculate_face_metrics
 from PIL import Image, ImageDraw, ImageFont
 
 
-def human_beauty_infer(pixel_values, tokenizer, model, output_level=1):
+def human_beauty_infer(pixel_values, tokenizer, model, output_level=1, data_type=torch.float16):
     """
         输出 4 类结果：
         1. 快速美学评分（整体颜值分）；
@@ -18,7 +18,7 @@ def human_beauty_infer(pixel_values, tokenizer, model, output_level=1):
         3. 12 个维度的专家评分（如面部结构、肤色、妆容等）；
         4. 12 个维度的专家文字注释（对各维度的具体描述）。
     """
-    pixel_values = pixel_values.to(dtype=torch.float16, device=model.device)
+    pixel_values = pixel_values.to(dtype=data_type, device=model.device)
     # 在这里修改美学大模型参数
     generation_config = dict(max_new_tokens=256,
                              do_sample=False,
@@ -43,7 +43,7 @@ def human_beauty_infer(pixel_values, tokenizer, model, output_level=1):
 
 
 class Models:
-    def __init__(self, select_model2path={}, select_model2column={}, clip_prompts={}, output_leval=1, use_half=True):
+    def __init__(self, select_model2path={}, select_model2column={}, clip_prompts={}, output_leval=1, no_half=False):
         self.model2path = select_model2path        # 模型名：路径
         self.model2column = select_model2column    # 模型名：列名
         self.processor_dict = {}
@@ -51,10 +51,10 @@ class Models:
         self.clip_prompts = clip_prompts    # clip模型的提示模板
         self.device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
         self.output_level = output_leval
-        if use_half:
-            self.data_type = torch.float16
-        else:
+        if no_half:
             self.data_type = torch.float32
+        else:
+            self.data_type = torch.float16
 
     def load_models(self):
         """加载所有模型"""
@@ -64,7 +64,7 @@ class Models:
                 self.processor_dict[model_name] = AutoTokenizer.from_pretrained(model_path, trust_remote_code=True, use_fast=False, local_files_only=True)
                 self.model_dict[model_name] = AutoModel.from_pretrained(
                                                 model_path,
-                                                torch_dtype=self.data_type,
+                                                torch_dtype=torch.float16,
                                                 low_cpu_mem_usage=True,
                                                 use_flash_attn=False,
                                                 trust_remote_code=True,
@@ -93,7 +93,7 @@ class Models:
                 pixel_values_list = [process_img_beauty(img, max_num=max_num) for img in batch_imgs]
                 pixel_values = torch.cat(pixel_values_list, dim=0).to(dtype=self.data_type, device=self.device)
                 with torch.no_grad():
-                    result = human_beauty_infer(pixel_values, processor, model, self.output_level)
+                    result = human_beauty_infer(pixel_values, processor, model, self.output_level, self.data_type)
                 for i in range(batch_size):
                     batch_results[i].update(result)
             elif model_name == "clip_vit":
