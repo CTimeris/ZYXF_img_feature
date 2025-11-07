@@ -70,6 +70,7 @@ parser.add_argument('--label_file', type=str, default='datasets/labels.txt', hel
 parser.add_argument('--do_eval', action='store_true', help='是否需要评估')
 parser.add_argument('--output_level', type=int, default=2,
                     help='美学大模型输出内容等级，从1到4，1最快，只做整体评分，4最慢输出全部评分')
+parser.add_argument('--use_half', action='store_true', help='半精度推理')
 
 parser.add_argument('--no_Retinaface', action='store_true')
 parser.add_argument('--save_img', action='store_true', help='是否保存Retinaface检测的图片')

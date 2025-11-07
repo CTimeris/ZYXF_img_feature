@@ -43,7 +43,7 @@ def human_beauty_infer(pixel_values, tokenizer, model, output_level=1):
 
 
 class Models:
-    def __init__(self, select_model2path={}, select_model2column={}, clip_prompts={}, output_leval=1):
+    def __init__(self, select_model2path={}, select_model2column={}, clip_prompts={}, output_leval=1, use_half=True):
         self.model2path = select_model2path        # 模型名：路径
         self.model2column = select_model2column    # 模型名：列名
         self.processor_dict = {}
@@ -51,6 +51,10 @@ class Models:
         self.clip_prompts = clip_prompts    # clip模型的提示模板
         self.device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
         self.output_level = output_leval
+        if use_half:
+            self.data_type = torch.float16
+        else:
+            self.data_type = torch.float32
 
     def load_models(self):
         """加载所有模型"""
@@ -60,7 +64,7 @@ class Models:
                 self.processor_dict[model_name] = AutoTokenizer.from_pretrained(model_path, trust_remote_code=True, use_fast=False, local_files_only=True)
                 self.model_dict[model_name] = AutoModel.from_pretrained(
                                                 model_path,
-                                                torch_dtype=torch.float16,
+                                                torch_dtype=self.data_type,
                                                 low_cpu_mem_usage=True,
                                                 use_flash_attn=False,
                                                 trust_remote_code=True,
@@ -69,11 +73,11 @@ class Models:
             elif model_name == "clip_vit":
                 # clip模型
                 self.processor_dict[model_name] = CLIPProcessor.from_pretrained(model_path)
-                self.model_dict[model_name] = CLIPModel.from_pretrained(model_path).to(dtype=torch.float16, device=self.device).eval()
+                self.model_dict[model_name] = CLIPModel.from_pretrained(model_path).to(dtype=self.data_type, device=self.device).eval()
             else:
                 # 其他模型
                 self.processor_dict[model_name] = AutoImageProcessor.from_pretrained(model_path)
-                self.model_dict[model_name] = AutoModelForImageClassification.from_pretrained(model_path).to(dtype=torch.float16, device=self.device).eval()
+                self.model_dict[model_name] = AutoModelForImageClassification.from_pretrained(model_path).to(dtype=self.data_type, device=self.device).eval()
 
     def infer_imgs(self, batch_imgs):
         """推理图片"""
@@ -87,7 +91,7 @@ class Models:
                 # 美学大模型
                 max_num = 4     # 子图数量，子图越多推理越慢
                 pixel_values_list = [process_img_beauty(img, max_num=max_num) for img in batch_imgs]
-                pixel_values = torch.cat(pixel_values_list, dim=0).to(self.device)
+                pixel_values = torch.cat(pixel_values_list, dim=0).to(dtype=self.data_type, device=self.device)
                 with torch.no_grad():
                     result = human_beauty_infer(pixel_values, processor, model, self.output_level)
                 for i in range(batch_size):
@@ -96,7 +100,7 @@ class Models:
                 # clip大模型
                 for column, prompt in self.clip_prompts.items():
                     inputs = processor(text=prompt, images=batch_imgs, return_tensors="pt", padding=True)
-                    inputs = {k: v.to(self.device) for k, v in inputs.items()}
+                    inputs = {k: v.to(dtype=self.data_type, device=self.device) for k, v in inputs.items()}
                     with torch.no_grad():
                         outputs = model(**inputs)
                     logits_per_image = outputs.logits_per_image  # 图文相似度
@@ -107,7 +111,7 @@ class Models:
             else:
                 # 其他
                 inputs = processor(images=batch_imgs, return_tensors="pt")
-                inputs = {k: v.to(self.device) for k, v in inputs.items()}
+                inputs = {k: v.to(dtype=self.data_type, device=self.device) for k, v in inputs.items()}
                 with torch.no_grad():
                     output = model(**inputs)
                 logits = output.logits
