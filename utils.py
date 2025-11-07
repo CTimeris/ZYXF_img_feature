@@ -19,7 +19,7 @@ def get_img_paths(img_dir):
     return img_paths
 
 
-def process_img_beauty(img, input_size=448, max_num=12):
+def process_img_beauty(img, input_size=448, max_num=4):
     """human_beauty的输入需要特殊处理"""
     transform = build_transform(input_size=input_size)
     images = dynamic_preprocess(img, image_size=input_size, use_thumbnail=True, max_num=max_num)   # 动态分割
@@ -58,7 +58,7 @@ def find_closest_aspect_ratio(aspect_ratio, target_ratios, width, height, image_
     return best_ratio
 
 
-def dynamic_preprocess(img, image_size=448, use_thumbnail=True, max_num=12, min_num=1):
+def dynamic_preprocess(img, image_size=448, use_thumbnail=True, max_num=4, min_num=1):
     """分割出子图"""
     ori_width, ori_height = img.size  # 原始图像宽高
     aspect_ratio = ori_width / ori_height  # 原始宽高比

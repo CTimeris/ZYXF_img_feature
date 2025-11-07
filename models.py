@@ -1,4 +1,6 @@
 # -*- coding: utf-8 -*-
+import os
+
 import numpy as np
 from transformers import AutoImageProcessor, AutoModelForImageClassification, AutoModel, AutoTokenizer
 from transformers import CLIPProcessor, CLIPModel
@@ -8,7 +10,7 @@ from utils import process_img_beauty, calculate_face_metrics
 from PIL import Image, ImageDraw, ImageFont
 
 
-def human_beauty_infer(pixel_values, tokenizer, model):
+def human_beauty_infer(pixel_values, tokenizer, model, output_level=1):
     """
         输出 4 类结果：
         1. 快速美学评分（整体颜值分）；
@@ -17,39 +19,38 @@ def human_beauty_infer(pixel_values, tokenizer, model):
         4. 12 个维度的专家文字注释（对各维度的具体描述）。
     """
     pixel_values = pixel_values.to(dtype=torch.float16, device=model.device)
-    generation_config = dict(max_new_tokens=1024, do_sample=True)
+    # 在这里修改美学大模型参数
+    generation_config = dict(max_new_tokens=256,
+                             do_sample=False,
+                             temperature=0.0)
     question = '<image>\nRate the aesthetics of this human picture.'
 
     # infer
-    pred_score = model.score(tokenizer, pixel_values, question)
-    metavoter_score = model.run_metavoter(tokenizer, pixel_values)  # 精确评分
-    expert_score, expert_text = model.expert_score(tokenizer, pixel_values)  # 12个维度的专家评分，专家输出文本
-    expert_annotataion = model.expert_annotataion(tokenizer, pixel_values, generation_config)  # 各维度具体描述
-    output = {
-        '整体颜值评分': pred_score,
-        '精确综合评分': metavoter_score,
-        '12个维度专家评分': expert_score,
-        # '专家文本': expert_text,
-        '12个维度具体描述': expert_annotataion
-    }
+    output = {}
+    if output_level >= 1:
+        pred_score = model.score(tokenizer, pixel_values, question)
+        output['整体颜值评分'] = pred_score
+    if output_level >= 2:
+        metavoter_score = model.run_metavoter(tokenizer, pixel_values)  # 精确评分
+        output['精确综合评分'] = metavoter_score
+    if output_level >= 3:
+        expert_score, expert_text = model.expert_score(tokenizer, pixel_values)  # 12个维度的专家评分，专家输出文本
+        output['12个维度专家评分'] = expert_score
+    if output_level >= 4:
+        expert_annotataion = model.expert_annotataion(tokenizer, pixel_values, generation_config)  # 各维度具体描述
+        output['12个维度具体描述'] = expert_annotataion
     return output
 
 
-def clip_infer(image, text, processor, model):
-    inputs = processor(text=text, images=image, return_tensors="pt", padding=True)
-    outputs = model(**inputs)
-    logits_per_image = outputs.logits_per_image  # 图文相似度
-    probs = logits_per_image.softmax(dim=1)  # 标签概率
-    return probs
-
-
 class Models:
-    def __init__(self, select_model2path={}, select_model2column={}, clip_prompts={}):
+    def __init__(self, select_model2path={}, select_model2column={}, clip_prompts={}, output_leval=1):
         self.model2path = select_model2path        # 模型名：路径
         self.model2column = select_model2column    # 模型名：列名
         self.processor_dict = {}
         self.model_dict = {}
         self.clip_prompts = clip_prompts    # clip模型的提示模板
+        self.device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+        self.output_level = output_leval
 
     def load_models(self):
         """加载所有模型"""
@@ -63,51 +64,61 @@ class Models:
                                                 low_cpu_mem_usage=True,
                                                 use_flash_attn=False,
                                                 trust_remote_code=True,
-                                                local_files_only=True).eval().cuda()
+                                                local_files_only=True).eval().to(self.device)
                 print(f"当前推理设备：{self.model_dict[model_name].device}（若为'cpu'，1B模型会极慢，需要用GPU）")
             elif model_name == "clip_vit":
                 # clip模型
                 self.processor_dict[model_name] = CLIPProcessor.from_pretrained(model_path)
-                self.model_dict[model_name] = CLIPModel.from_pretrained(model_path)
+                self.model_dict[model_name] = CLIPModel.from_pretrained(model_path).to(dtype=torch.float16, device=self.device).eval()
             else:
                 # 其他模型
                 self.processor_dict[model_name] = AutoImageProcessor.from_pretrained(model_path)
-                self.model_dict[model_name] = AutoModelForImageClassification.from_pretrained(model_path)
+                self.model_dict[model_name] = AutoModelForImageClassification.from_pretrained(model_path).to(dtype=torch.float16, device=self.device).eval()
 
-    def infer_one_img(self, img_path):
-        """推理一张图片"""
-        img = Image.open(img_path).convert("RGB")
-
-        results = {}
+    def infer_imgs(self, batch_imgs):
+        """推理图片"""
+        batch_size = len(batch_imgs)
+        batch_results = [{} for _ in range(batch_size)]
         # 每个模型分别推理一次图片
         for model_name in self.model_dict.keys():
             processor = self.processor_dict[model_name]
             model = self.model_dict[model_name]
             if model_name == "human_beauty":
                 # 美学大模型
-                pixel_values = process_img_beauty(img)
-                result = human_beauty_infer(pixel_values, processor, model)
-                results.update(result)
+                max_num = 4     # 子图数量，子图越多推理越慢
+                pixel_values_list = [process_img_beauty(img, max_num=max_num) for img in batch_imgs]
+                pixel_values = torch.cat(pixel_values_list, dim=0).to(self.device)
+                with torch.no_grad():
+                    result = human_beauty_infer(pixel_values, processor, model, self.output_level)
+                for i in range(batch_size):
+                    batch_results[i].update(result)
             elif model_name == "clip_vit":
                 # clip大模型
                 for column, prompt in self.clip_prompts.items():
-                    probs = clip_infer(img, prompt, processor, model)
-                    probs_flat = probs.squeeze()
-                    index = torch.argmax(probs_flat).item()
-                    results[column] = index     # 结果保留为prompts中对应的类别下标
+                    inputs = processor(text=prompt, images=batch_imgs, return_tensors="pt", padding=True)
+                    inputs = {k: v.to(self.device) for k, v in inputs.items()}
+                    with torch.no_grad():
+                        outputs = model(**inputs)
+                    logits_per_image = outputs.logits_per_image  # 图文相似度
+                    probs = logits_per_image.softmax(dim=1)  # 标签概率
+                    index = torch.argmax(probs, dim=1).item()
+                    for i in range(batch_size):
+                        batch_results[column] = index[i]  # 结果保留为prompts中对应的类别下标
             else:
                 # 其他
-                input_data = processor(images=img, return_tensors="pt")
+                inputs = processor(images=batch_imgs, return_tensors="pt")
+                inputs = {k: v.to(self.device) for k, v in inputs.items()}
                 with torch.no_grad():
-                    output = model(**input_data)
-                    logits = output.logits
-                    predicted_class_idx = logits.argmax(-1).item()                  # 预测的类别id
-                    predicted_class = model.config.id2label[predicted_class_idx]    # id对应的类别名
-                    # 保留两个结果：类别id和类别名
-                    column = self.model2column[model_name]
-                    results[column] = predicted_class_idx           # 列名：类别id
-                    results[model_name] = predicted_class           # 模型名：类别名
-        return results
+                    output = model(**inputs)
+                logits = output.logits
+                predicted_class_idx = logits.argmax(-1).tolist()  # 预测的类别id
+                # 保留两个结果：类别id和类别名
+                column = self.model2column[model_name]
+                for i in range(batch_size):
+                    batch_results[i][column] = predicted_class_idx[i]  # 列名：类别id
+                    batch_results[i][model_name] = model.config.id2label[predicted_class_idx[i]]  # 模型名：类别名
+
+        return batch_results
 
 
 def load_Retinaface():
@@ -136,7 +147,7 @@ def load_Retinaface():
     return net, cfg, device, args
 
 
-def Retinaface_infer(img_path, output_path, net, cfg, device, args, save_img):
+def Retinaface_infer(img_path, img_output_dir, net, cfg, device, args, save_img):
     img = Image.open(img_path).convert("RGB")
 
     # 限制图像尺寸（长边不超过800像素）
@@ -174,7 +185,10 @@ def Retinaface_infer(img_path, output_path, net, cfg, device, args, save_img):
             for j in range(5):
                 x, y = int(landmarks[2 * j]), int(landmarks[2 * j + 1])
                 draw.ellipse([(x-3, y-3), (x+3, y+3)], fill=(0, 255, 0))  # 绿色（RGB）
-            img.save(output_path)
+
+            img_filename = os.path.basename(img_path)
+            img_output_path = os.path.join(img_output_dir, img_filename)
+            img.save(img_output_path)
             # print(f"脸型结果图像已保存至：{output_path}")
 
     return output

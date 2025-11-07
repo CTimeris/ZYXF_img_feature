@@ -1,9 +1,8 @@
 # -*- coding: utf-8 -*-
 import gc
 from datetime import datetime
-
+from PIL import Image
 import torch.cuda
-
 from models import Models, load_Retinaface, Retinaface_infer
 import pandas as pd
 from utils import save_results, test_res, get_img_paths
@@ -62,15 +61,18 @@ model_names = ['skin_type', 'skin_wrinkles', 'age_detect', 'hair_type', 'hair_co
 
 # 运行参数
 parser = argparse.ArgumentParser()
+parser.add_argument('--batch_size', type=int, default=2)
 parser.add_argument('--select_models', type=str, default='all',
                     help='用逗号分隔需要跑的模型（如--select_models=skin_type,clip_vit），默认全跑')
 parser.add_argument('--img_dir', type=str, default='datasets/test_imgs', help='需要推理的图片路径')
 parser.add_argument('--save_dir', type=str, default='res', help='保存结果的目录')
 parser.add_argument('--label_file', type=str, default='datasets/labels.txt', help='标签数据')
-parser.add_argument('--no_eval', type=bool, default=True, help='是否需要评估')
+parser.add_argument('--do_eval', action='store_true', help='是否需要评估')
+parser.add_argument('--output_level', type=int, default=2,
+                    help='美学大模型输出内容等级，从1到4，1最快，只做整体评分，4最慢输出全部评分')
 
-parser.add_argument('--use_Retinaface', type=bool, default=True, help='是否使用Retinaface模型')
-parser.add_argument('--save_img', type=bool, default=True, help='是否需要保存Retinaface检测的图片')
+parser.add_argument('--no_Retinaface', action='store_true')
+parser.add_argument('--save_img', action='store_true', help='是否保存Retinaface检测的图片')
 parser.add_argument('--img_output_dir', type=str, default='img_output', help='Retinaface图片输出路径')
 
 
@@ -95,6 +97,7 @@ def main():
     if args.save_img:
         if not os.path.exists(img_output_dir):  # 检测图片的输出目录
             os.mkdir(img_output_dir)
+    batch_size = args.batch_size
 
     # ---获取图片路径---
     img_dir = args.img_dir  # 图片目录
@@ -105,27 +108,35 @@ def main():
         result = {'图片路径': img_path}
         results.append(result)
 
-    # ---加载模型---
-    all_models = Models(select_model2path, select_model2column, clip_prompts)
-    all_models.load_models()
+    print(f"{img_dir}目录下共{len(img_paths)}张图片，使用{batch_size}的batch大小推理")
 
-    if args.use_Retinaface:
+    # ---加载模型---
+    all_models = Models(select_model2path, select_model2column, clip_prompts, args.output_level)
+    all_models.load_models()
+    if not args.no_Retinaface:
         net, cfg, Retinaface_device, Retinaface_args = load_Retinaface()  # 加载Retinaface模型
     time1 = datetime.now()
     print(f"所有模型加载完毕，当前时间: {time1}")
     # 推理
-    for i in range(len(img_paths)):
-        img_path = img_paths[i]
-        outputs = all_models.infer_one_img(img_path)  # 汇集所有输出的字典
-        results[i].update(outputs)
-        if args.use_Retinaface:
-            img_filename = os.path.basename(img_path)
-            img_output_path = os.path.join(img_output_dir, img_filename)
-            result = Retinaface_infer(img_path, img_output_path, net, cfg, Retinaface_device, Retinaface_args, args.save_img)
-            results[i].update(result)
+    for i in range(0, len(img_paths), batch_size):
+        batch_paths = img_paths[i: i + batch_size]
+        batch_imgs = [Image.open(path).convert('RGB') for path in batch_paths]
+        batch_outputs = all_models.infer_imgs(batch_imgs)  # 汇集所有输出的字典
+        for j in range(len(batch_paths)):
+            results[i + j].update(batch_outputs[j])
+            if not args.no_Retinaface:
+                img_path = batch_paths[j]
+                # 调用原有单张推理函数
+                retina_result = Retinaface_infer(
+                    img_path, img_output_dir, net, cfg,
+                    Retinaface_device, Retinaface_args, args.save_img
+                )
+                results[i + j].update(retina_result)
+        torch.cuda.empty_cache()
+        gc.collect()
+
     time2 = datetime.now()
-    print(f"{img_dir}目录下{len(img_paths)}张图片推理完毕，当前时间: {time2}")
-    print(f"平均推理时间: {(time2 - time1) / len(img_paths)}")
+    print(f"推理完毕，当前时间: {time2}。平均推理时间: {(time2 - time1) / len(img_paths)}")
 
     # ---保存结果---
     df_results = pd.DataFrame(results)
@@ -134,7 +145,7 @@ def main():
     # save_results(results, save_dir)       # 一行一行写，保存为txt文件
 
     # ---评估结果---
-    if not args.no_eval and args.select_models is not None:
+    if args.do_eval:
         label_file = args.label_file
         df_labels = pd.read_csv(label_file, sep=',', header=0)
         merge_column = '图片路径'  # 根据图片路径这一列合并
