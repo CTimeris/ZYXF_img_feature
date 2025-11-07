@@ -100,12 +100,11 @@ class Models:
                 # clip大模型
                 for column, prompt in self.clip_prompts.items():
                     inputs = processor(text=prompt, images=batch_imgs, return_tensors="pt", padding=True)
-                    inputs = {k: v.to(dtype=self.data_type, device=self.device) for k, v in inputs.items()}
                     with torch.no_grad():
                         outputs = model(**inputs)
                     logits_per_image = outputs.logits_per_image  # 图文相似度
                     probs = logits_per_image.softmax(dim=1)  # 标签概率
-                    index = torch.argmax(probs, dim=1).item().long
+                    index = torch.argmax(probs, dim=1).item()
                     for i in range(batch_size):
                         batch_results[i][column] = index[i].item()  # 结果保留为prompts中对应的类别下标
             else:
